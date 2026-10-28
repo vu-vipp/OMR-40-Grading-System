@@ -1,7 +1,8 @@
 """40-question fixed-layout OMR. No OCR or machine-learning model required."""
 from __future__ import annotations
 
-from dataclasses import dataclass
+import re
+import zlib
 import cv2
 import numpy as np
 
@@ -11,6 +12,64 @@ CODES = ('101', '102', '103', '104')
 MARKERS = np.float32([[65, 65], [935, 65], [935, 1335], [65, 1335]])
 NUM_QUESTIONS = 40
 DEFAULT_KEY = LETTERS * 10
+# Mỗi mẫu có tối đa 4 ô mã đề, nhưng có thể tạo không giới hạn nhóm mẫu.
+STAMP_Y = 1231
+STAMP_START_X = 190
+STAMP_STEP = 26
+STAMP_LEFT_GUARD = 146
+STAMP_RIGHT_GUARD = 824
+STAMP_BITS = 24
+
+
+def normalize_code(value: str) -> str:
+    """Giữ nguyên cả số 0 ở đầu: 001, 105, 999."""
+    if not isinstance(value, str) or re.fullmatch(r'[0-9]{3}', value.strip()) is None:
+        raise ValueError('Mã đề phải gồm đúng 3 chữ số (ví dụ: 105 hoặc 001).')
+    return value.strip()
+
+
+def validate_sheet_codes(codes) -> tuple[str, ...]:
+    if not isinstance(codes, (tuple, list)) or not 1 <= len(codes) <= 4:
+        raise ValueError('Mỗi mẫu phiếu cần từ 1 đến 4 mã đề.')
+    result = tuple(normalize_code(code) for code in codes)
+    if len(result) != len(set(result)):
+        raise ValueError('Các mã đề trên cùng một phiếu không được trùng nhau.')
+    return result
+
+
+def template_checksum(codes) -> int:
+    codes = validate_sheet_codes(codes)
+    return zlib.crc32('|'.join(codes).encode('ascii')) & ((1 << STAMP_BITS) - 1)
+
+
+def _draw_template_stamp(image: np.ndarray, codes) -> None:
+    """Dấu xác minh 24 bit để tránh nhận nhầm nhóm mã đề khi chấm."""
+    value = template_checksum(codes)
+    for x in (STAMP_LEFT_GUARD, STAMP_RIGHT_GUARD):
+        cv2.rectangle(image, (x-9, STAMP_Y-9), (x+9, STAMP_Y+9), (0, 0, 0), -1)
+    for bit in range(STAMP_BITS):
+        if (value >> bit) & 1:
+            x = STAMP_START_X + bit * STAMP_STEP
+            cv2.rectangle(image, (x-9, STAMP_Y-9), (x+9, STAMP_Y+9), (0, 0, 0), -1)
+
+
+def _read_template_stamp(binary: np.ndarray) -> int | None:
+    def sampled(x: int) -> float:
+        return float(np.mean(binary[STAMP_Y-5:STAMP_Y+6, x-5:x+6] > 0))
+    guards = [sampled(x) for x in (STAMP_LEFT_GUARD, STAMP_RIGHT_GUARD)]
+    # Phiếu mẫu V3 cũ chưa có dấu xác minh. Chỉ chấp nhận loại này với 101–104.
+    if max(guards) < .20:
+        return None
+    if min(guards) < .65:
+        raise SheetError('Không đọc được dấu xác minh mẫu phiếu. Hãy chụp rõ toàn bộ phiếu.')
+    checksum = 0
+    for bit in range(STAMP_BITS):
+        ratio = sampled(STAMP_START_X + bit * STAMP_STEP)
+        if .20 <= ratio <= .65:
+            raise SheetError('Dấu xác minh bị mờ hoặc che. Hãy chụp lại phiếu.')
+        if ratio > .65:
+            checksum |= 1 << bit
+    return checksum
 
 class SheetError(ValueError):
     """A sheet cannot safely be processed."""
@@ -27,7 +86,8 @@ def code_xy(index: int) -> tuple[int, int]:
     return 330 + index * 115, 216
 
 
-def blank_sheet() -> np.ndarray:
+def blank_sheet(codes=CODES) -> np.ndarray:
+    codes = validate_sheet_codes(codes)
     im = np.full((H, W, 3), 255, np.uint8)
     for x, y in MARKERS.astype(int):
         cv2.rectangle(im, (x-19, y-19), (x+19, y+19), (0, 0, 0), -1)
@@ -35,7 +95,7 @@ def blank_sheet() -> np.ndarray:
     cv2.putText(im, 'NAME: ___________________________________', (126, 152), cv2.FONT_HERSHEY_SIMPLEX, .62, (0, 0, 0), 2)
     cv2.putText(im, 'STUDENT ID: _____________________________', (126, 182), cv2.FONT_HERSHEY_SIMPLEX, .6, (0, 0, 0), 2)
     cv2.putText(im, 'EXAM CODE:', (126, 222), cv2.FONT_HERSHEY_SIMPLEX, .52, (0, 0, 0), 1)
-    for k, code in enumerate(CODES):
+    for k, code in enumerate(codes):
         x, y = code_xy(k)
         cv2.circle(im, (x, y), 19, (0, 0, 0), 2)
         cv2.putText(im, code, (x - 22, y + 37), cv2.FONT_HERSHEY_SIMPLEX, .52, (0, 0, 0), 1)
@@ -51,6 +111,7 @@ def blank_sheet() -> np.ndarray:
         for k, letter in enumerate(LETTERS):
             bx, by = bubble_xy(q, k)
             cv2.circle(im, (bx, by), 19, (0, 0, 0), 2)
+    _draw_template_stamp(im, codes)
     cv2.putText(im, 'KEEP ALL FOUR SOLID CORNER MARKS VISIBLE', (190, 1278), cv2.FONT_HERSHEY_SIMPLEX, .6, (0, 0, 0), 1)
     return im
 
@@ -140,16 +201,24 @@ def classify(ratios, threshold: float = .24, margin: float = .055):
     return hits[0]
 
 
-def recognize(image: np.ndarray, threshold: float = .24, margin: float = .055):
+def recognize(image: np.ndarray, threshold: float = .24, margin: float = .055, codes=CODES):
+    codes = validate_sheet_codes(codes)
     aligned = align_sheet(image)
     gray = cv2.cvtColor(aligned, cv2.COLOR_BGR2GRAY)
     binary = cv2.adaptiveThreshold(gray, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C, cv2.THRESH_BINARY_INV, 31, 12)
     annotated = aligned.copy()
+    stamp = _read_template_stamp(binary)
+    if stamp is None and codes != CODES:
+        raise SheetError('Đây là mẫu phiếu cũ 101–104 hoặc thiếu dấu xác minh. Hãy in mẫu mới cho nhóm mã đề đã chọn.')
+    if stamp is not None and stamp != template_checksum(codes):
+        raise SheetError('Sai nhóm mã đề: mẫu phiếu không khớp với nhóm mã đề đã chọn trên giao diện.')
     code_ratios = [fill_ratio(binary, *code_xy(k)) for k in range(4)]
     code_choice = classify(code_ratios, threshold, margin)
     if not isinstance(code_choice, int):
         raise SheetError('Không đọc được duy nhất mã đề: chưa tô, tô nhiều hoặc tô quá mờ. Không chấm phiếu này.')
-    code = CODES[code_choice]
+    if code_choice >= len(codes):
+        raise SheetError('Ô mã đề được tô không thuộc nhóm mã đề trên mẫu phiếu.')
+    code = codes[code_choice]
     answers, ratios_by_question = {}, {}
     for question in range(1, NUM_QUESTIONS + 1):
         ratios = [fill_ratio(binary, *bubble_xy(question, k)) for k in range(4)]
