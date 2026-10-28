@@ -8,10 +8,9 @@ import pandas as pd
 import streamlit as st
 
 from omr import (
-    CODES, DEFAULT_KEY, NUM_QUESTIONS, SheetError, annotate_grading,
+    NUM_QUESTIONS, SheetError, annotate_grading,
     blank_sheet, grade, image_quality, normalize_code, normalize_key, recognize, summary,
 )
-from demo_cases import CASES, create_case
 from code_config import load_config, save_config, parse_config, dump_config
 
 st.set_page_config(page_title='OMR 40 | Chấm bài trắc nghiệm', page_icon='📋', layout='wide')
@@ -129,24 +128,20 @@ with st.sidebar:
         margin = st.slider('Biên độ tô chưa rõ', min_value=.01, max_value=.12, value=.055, step=.005)
         st.caption('Nếu chưa quen, hãy giữ nguyên thông số mặc định.')
 
-page_grade, page_test, page_history, page_help = st.tabs([
-    '📝 Chấm bài', '🧪 Kiểm thử mẫu', '📊 Lịch sử trong phiên', '📖 Hướng dẫn',
+page_grade, page_history, page_help = st.tabs([
+    '📝 Chấm bài', '📊 Lịch sử trong phiên', '📖 Hướng dẫn',
 ])
 
 
 def render_sheet(image: np.ndarray, source_label: str, student_id: str, save_key: str,
-                 sheet_codes: tuple[str, ...], demo_mode: bool = False):
+                 sheet_codes: tuple[str, ...]):
     """Render a result and optional save action; reject before displaying grade when unsafe."""
     try:
         quality = image_quality(image)
         code, answers, ratios, _, aligned = recognize(image, threshold, margin, codes=sheet_codes)
-        # Demo luôn dùng đáp án mẫu. Chấm bài thật chỉ dùng đáp án được người dùng cấu hình.
-        if demo_mode:
-            key = DEFAULT_KEY
-        else:
-            if code not in st.session_state['answer_keys']:
-                raise ValueError(f'Chưa có đáp án chuẩn của mã đề {code}.')
-            key = normalize_key(st.session_state['answer_keys'][code])
+        if code not in st.session_state['answer_keys']:
+            raise ValueError(f'Chưa có đáp án chuẩn của mã đề {code}.')
+        key = normalize_key(st.session_state['answer_keys'][code])
         rows, score, correct, pending = grade(answers, key)
     except (ValueError, cv2.error) as exc:
         st.error('⛔ Không thể chấm bài: ' + str(exc))
@@ -225,20 +220,10 @@ with page_grade:
                 else:
                     render_sheet(image, upload.name, student_id, 'upload', tuple(codes_on_sheet))
     else:
-        st.info('Chưa có ảnh? Sang tab **Kiểm thử mẫu** để chạy ngay 16 tình huống demo.')
-
-with page_test:
-    st.subheader('2. Bộ ảnh kiểm thử tự động tạo')
-    st.write('Chọn một trường hợp, xem ảnh và kết quả chạy thật của thuật toán. Các ảnh là dữ liệu tổng hợp, không phải ảnh bài thi thực tế.')
-    chosen = st.selectbox('Tình huống kiểm thử', options=list(CASES), format_func=lambda x: f'{x} — {CASES[x]}')
-    demo_image = create_case(chosen)
-    ok, demo_buff = cv2.imencode('.png', demo_image)
-    if ok:
-        st.download_button('⬇️ Tải ảnh test này', demo_buff.tobytes(), f'{chosen}.png', 'image/png', key='demo_image_download')
-    render_sheet(demo_image, chosen, 'DEMO', 'demo', CODES, demo_mode=True)
+        st.info('Hãy tải ảnh phiếu đã tô để bắt đầu nhận diện và chấm điểm.')
 
 with page_history:
-    st.subheader('3. Lịch sử chấm trong phiên hiện tại')
+    st.subheader('2. Lịch sử chấm trong phiên hiện tại')
     if st.session_state['history']:
         table = pd.DataFrame(st.session_state['history'])
         st.dataframe(table, hide_index=True, use_container_width=True)
@@ -252,7 +237,7 @@ with page_history:
     st.caption('Lịch sử chỉ tồn tại trong phiên Streamlit, không lưu vào cơ sở dữ liệu. Hãy xuất CSV trước khi đóng hoặc khởi động lại ứng dụng.')
 
 with page_help:
-    st.subheader('4. Quy trình sử dụng')
+    st.subheader('3. Quy trình sử dụng')
     st.markdown('''
 1. Vào **Thêm / xóa mã đề** ở thanh bên: nhập mã mới gồm **3 chữ số** và **40 đáp án chuẩn** (A/B/C/D).
 2. Bấm **Lưu cấu hình trên máy** để giữ mã đề sau khi đóng chương trình. Có thể xuất/nhập JSON để chuyển máy.
