@@ -5,9 +5,9 @@
 ## 1. Mới trong V3
 
 - Sửa hoàn toàn lỗi `TypeError: 'method' object is not subscriptable` do dùng `st.session_state.keys[code]` ở bản V2: nay truy cập bằng `st.session_state[f'answer_key_{code}']`.
-- Sắp xếp lại giao diện thành 4 tab: **Chấm bài**, **Kiểm thử mẫu**, **Lịch sử trong phiên**, **Hướng dẫn**.
+- Giao diện có 3 tab: **Chấm bài**, **Lịch sử trong phiên**, **Hướng dẫn** (đã ẩn phần kiểm thử mẫu khỏi giao diện).
 - Cho phép **nhập đáp án chuẩn riêng biệt** cho bốn mã đề; kiểm tra đáp án đúng **40 ký tự A/B/C/D**.
-- Có **16 ảnh kiểm thử mẫu** để tải xuống và chạy trực tiếp từ giao diện.
+- Bộ **16 ảnh kiểm thử mẫu** chỉ được lưu trong thư mục `demo/` và dùng qua bộ test; không hiển thị trên giao diện chấm thi.
 - Xử lý **đúng, sai, bỏ trống, tô nhiều, tô chưa rõ**, báo lỗi **ảnh quá nhỏ/tối/nhòe, thiếu mốc**, và mã đề không xác định.
 - **Không tự chấm chính thức** khi có câu tô mờ: điểm hiển thị là **tạm tính, cần kiểm tra thủ công**.
 - Tải ảnh gốc và xem ảnh căn chỉnh, đánh dấu câu đúng/sai; xuất CSV và ảnh nhận diện.
@@ -56,7 +56,7 @@ python -m pytest -q
 
 Đã chạy **89 test đạt** trong môi trường kiểm thử cho thuật toán nhận diện, đáp án, kiểm soát lỗi, hình học phiếu, mã đề, mã hóa JPEG/PNG và 6 **UI mock smoke tests**. Giao diện thực tế vẫn cần chạy trên máy có Streamlit. Xem `KET_QUA_KIEM_THU.txt`.
 
-## 5. 16 tình huống demo
+## 5. 16 tình huống kiểm thử (không hiển thị trên giao diện)
 
 `Dung_40_cau`, `Sai_5_cau`, `Bo_trong_3_cau`, `To_nhieu_2_cau`, `To_mo_1_cau`, `Ma_de_102`, `Ma_de_103`, `Ma_de_104`, `Khong_to_ma_de`, `Hai_ma_de`, `Thieu_moc_goc`, `Anh_trang`, `Anh_qua_nho`, `Anh_qua_toi`, `Anh_bi_nhoe`, `Anh_nghieng_nhe`.
 
@@ -97,7 +97,7 @@ OMR_40_v3/
 - Tại mục **Mẫu phiếu và nhóm mã đề**, chọn **từ 1 đến 4 mã đề**, đúng thứ tự mong muốn, rồi tải mẫu phiếu để in. Muốn nhóm khác thì tạo mẫu mới. Đây là giới hạn **4 ô trên mỗi tờ giấy**, không giới hạn tổng mã đề được lưu.
 - Trước khi chấm, chọn **đúng nhóm mã đề đã in**. Mẫu V4 có **dấu xác minh 24 bit** và chương trình sẽ từ chối chấm nếu chọn sai nhóm, tránh chấm nhầm giữa các mã có cùng vị trí ô tô.
 - **Phiếu 101/102/103/104 in từ V3 cũ** vẫn có thể nhận diện khi chọn đủ nhóm mặc định. Không thể tự viết mã mới lên phiếu V3 cũ rồi dùng như phiếu mã mới; cần in mẫu mới.
-- Tab Kiểm thử mẫu độc lập với đáp án tự cấu hình. Các đáp án ABCD lặp lại chỉ là dữ liệu demo.
+- Tab **Kiểm thử mẫu** đã được bỏ khỏi giao diện theo yêu cầu; bộ test tự động và ảnh tổng hợp vẫn được giữ trong mã nguồn để kiểm tra thuật toán. Các đáp án ABCD lặp lại vẫn chỉ là dữ liệu demo.
 
 ### Ví dụ
 
