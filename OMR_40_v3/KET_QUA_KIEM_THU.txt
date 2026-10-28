@@ -1,0 +1,21 @@
+OMR 40 V3 — TEST REPORT
+=======================
+Executed: python -m pytest -q --disable-warnings
+Result: 89 passed, 0 failed (local test environment)
+
+Checks covered:
+- 9 recognized synthetic cases: perfect answers, 5 wrong, 3 blank, 2 multi-fill,
+  1 borderline/faint fill, codes 102/103/104, slight perspective distortion.
+- 7 rejected synthetic cases: missing or multiple exam code, missing corner mark,
+  blank picture, too-small picture, dark picture, excessively blurred picture.
+- 40-answer key validation, case-insensitive normalization and separate keys by exam code.
+- Grading, scores, confidence states, corner/bubble coordinates and error handling.
+- JPEG/PNG encode/decode round trips, annotation and noise image rejection.
+- 6 app wiring smoke tests using a mocked Streamlit module.
+
+Limitations:
+- Real Streamlit was NOT available to execute a browser/real UI integration test in
+  the test environment (package could not be fetched here).
+- Tests use generated images, NOT real photographed answer sheets; real-world
+  accuracy and robustness remain to be validated on printed/photosourced sheets.
+- Default answer keys are DEMO ONLY. Replace with actual keys before grading.
