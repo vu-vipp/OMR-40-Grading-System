@@ -1,5 +1,7 @@
-"""UI wiring smoke test without requiring Streamlit installation in the CI environment.
-This is NOT a real browser/Streamlit integration test.
+"""Streamlit UI smoke tests with uploaded images (no testing tab required).
+
+These tests use a lightweight mock, not a real Streamlit browser session.
+Synthetic image cases are kept in the test suite, not displayed on the UI.
 """
 from __future__ import annotations
 import importlib.util
@@ -7,7 +9,10 @@ from pathlib import Path
 import sys
 import types
 
+import cv2
 import pytest
+
+from demo_cases import create_case
 
 
 class _Element:
@@ -27,14 +32,26 @@ class _Element:
         return fn
 
 
+class _ImageUpload:
+    name = 'sample.png'
+    def __init__(self, image):
+        ok, data = cv2.imencode('.png', image)
+        assert ok
+        self.data = data.tobytes()
+    def getvalue(self):
+        return self.data
+
+
 class _FakeStreamlit(types.ModuleType):
     def __init__(self, selected):
         super().__init__('streamlit')
         self.session_state = {}
         self.sidebar = _Element(self.session_state)
-        self.selected = selected
+        self.upload = _ImageUpload(create_case(selected))
         self.calls = []
+        self.tab_labels = []
     def tabs(self, names):
+        self.tab_labels = list(names)
         return [_Element(self.session_state) for _ in names]
     def columns(self, number):
         return [_Element(self.session_state) for _ in range(number)]
@@ -48,8 +65,12 @@ class _FakeStreamlit(types.ModuleType):
     def slider(self, label, min_value, max_value, value, **kwargs):
         return value
     def selectbox(self, label, options, **kwargs):
-        return self.selected
-    def file_uploader(self, *args, **kwargs):
+        return options[0]
+    def multiselect(self, label, options, key=None, **kwargs):
+        return self.session_state.get(key, options[:4])
+    def file_uploader(self, *args, key=None, **kwargs):
+        if key == 'uploaded_sheet':
+            return self.upload
         return None
     def button(self, *args, **kwargs):
         return False
@@ -78,14 +99,18 @@ class _FakeStreamlit(types.ModuleType):
     ('Khong_to_ma_de', 'error'),
     ('Anh_trang', 'error'),
 ])
-def test_app_executes_with_mocked_ui(selected,kind,monkeypatch):
+def test_upload_grading_without_sample_tab(selected, kind, monkeypatch):
     mock = _FakeStreamlit(selected)
     monkeypatch.setitem(sys.modules, 'streamlit', mock)
     path = Path(__file__).parents[1] / 'app.py'
-    spec = importlib.util.spec_from_file_location('_omr_mock_app',path)
+    spec = importlib.util.spec_from_file_location('_omr_mock_app', path)
     mod = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(mod)
     assert kind in mock.calls
-    if kind in ('warning','success'):
+    if kind in ('warning', 'success'):
         assert 'dataframe' in mock.calls
+    assert mock.tab_labels == [
+        '📝 Chấm bài', '📊 Lịch sử trong phiên', '📖 Hướng dẫn',
+    ]
+    assert '🧪 Kiểm thử mẫu' not in mock.tab_labels
     assert len([k for k in mock.session_state if k.startswith('answer_key_')]) == 4
