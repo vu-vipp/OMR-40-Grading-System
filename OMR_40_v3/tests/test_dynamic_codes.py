@@ -126,4 +126,5 @@ def test_app_supports_selectable_codes_and_sheet_validation():
     assert 'max_selections=4' in source
     assert 'codes=sheet_codes' in source
     assert 'save_config(valid_keys)' in source
-    assert 'demo_mode=True' in source
+    assert '🧪 Kiểm thử mẫu' not in source
+    assert 'with page_test:' not in source
