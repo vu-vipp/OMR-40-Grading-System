@@ -87,3 +87,22 @@ OMR_40_v3/
 - Chưa có kiểm thử thực tế bằng một tập ảnh phiếu giấy đã in/chụp; 89 test tự động không đại diện cho độ chính xác ngoài thực tế.
 - Chưa có cơ sở dữ liệu và chưa có báo cáo Word ở phiên bản này theo yêu cầu ưu tiên code của người dùng.
 - Hạn chế nhận diện orientation nếu ảnh bị xoay ngược 180 độ; nên chụp đúng chiều như mẫu.
+
+
+## 8. Mới trong V4 — Tự thêm mã đề (101, 105, 205, 999, ...)
+
+- Vào thanh bên **Thêm / xóa mã đề**, nhập mã đề đúng **3 chữ số** và đủ **40 ký tự A/B/C/D**; bấm **Thêm mã đề**.
+- Có thể nhập thêm nhiều mã đề, sửa đáp án riêng và xóa mã không dùng.
+- Bấm **Lưu cấu hình trên máy** để ghi vào `answer_keys_local.json` (đã đưa vào `.gitignore` để **không đẩy đáp án lên GitHub**). Có thể **xuất JSON / nhập JSON** để sao lưu hay chuyển máy; định dạng JSON bản V3 cũng được hỗ trợ.
+- Tại mục **Mẫu phiếu và nhóm mã đề**, chọn **từ 1 đến 4 mã đề**, đúng thứ tự mong muốn, rồi tải mẫu phiếu để in. Muốn nhóm khác thì tạo mẫu mới. Đây là giới hạn **4 ô trên mỗi tờ giấy**, không giới hạn tổng mã đề được lưu.
+- Trước khi chấm, chọn **đúng nhóm mã đề đã in**. Mẫu V4 có **dấu xác minh 24 bit** và chương trình sẽ từ chối chấm nếu chọn sai nhóm, tránh chấm nhầm giữa các mã có cùng vị trí ô tô.
+- **Phiếu 101/102/103/104 in từ V3 cũ** vẫn có thể nhận diện khi chọn đủ nhóm mặc định. Không thể tự viết mã mới lên phiếu V3 cũ rồi dùng như phiếu mã mới; cần in mẫu mới.
+- Tab Kiểm thử mẫu độc lập với đáp án tự cấu hình. Các đáp án ABCD lặp lại chỉ là dữ liệu demo.
+
+### Ví dụ
+
+Thêm mã đề `105` và `205`, chọn nhóm `101, 105, 205`, tải/in mẫu phiếu mới. Khi học sinh tô một trong ba ô mã đề, chương trình nhận diện đúng mã đã tô và lấy bộ đáp án riêng. Nếu chọn nhầm nhóm `101, 102, 103, 104`, chương trình sẽ báo **sai nhóm mã đề** chứ không âm thầm chấm nhầm.
+
+### Kiểm thử
+
+Chạy `TEST_WINDOWS.bat` hoặc `python -m pytest -q tests`. Bộ kiểm thử bao gồm ảnh tổng hợp và không thay thế kiểm thử thực tế với phiếu giấy và ảnh chụp điện thoại.
