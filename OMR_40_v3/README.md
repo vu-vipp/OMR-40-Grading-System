@@ -41,7 +41,7 @@ python -m streamlit run app.py
 2. Tải mẫu phiếu từ sidebar (`mau_phieu_40_cau.png`), in **đúng tỉ lệ khung hình**.
 3. Tô 1 mã đề, tối đa 1 đáp án A/B/C/D cho mỗi câu. Viết tên và SBD vào ô giấy.
 4. Chụp ảnh phiếu đủ cả 4 **mốc vuông đen** ở bốn góc, đủ sáng, nét và ít nghiêng.
-5. Mở tab **Chấm bài**, nhập SBD (gõ tay), tải ảnh PNG/JPG.
+5. Mở tab **Chấm bài**, nhập SBD (gõ tay), chọn **Tải ảnh từ máy** hoặc **Chụp bằng camera**. Chụp rõ cả 4 góc của phiếu.
 6. Xem kết quả, hình minh họa và xuất kết quả CSV/ảnh nhận diện.
 7. Các câu "Chưa rõ" yêu cầu kiểm tra bằng mắt. Ảnh lỗi hoặc mã đề không hợp lệ sẽ không được chấm.
 
@@ -106,3 +106,13 @@ Thêm mã đề `105` và `205`, chọn nhóm `101, 105, 205`, tải/in mẫu ph
 ### Kiểm thử
 
 Chạy `TEST_WINDOWS.bat` hoặc `python -m pytest -q tests`. Bộ kiểm thử bao gồm ảnh tổng hợp và không thay thế kiểm thử thực tế với phiếu giấy và ảnh chụp điện thoại.
+
+
+## 9. Chụp ảnh phiếu trực tiếp bằng camera
+
+- Mở **Chấm bài** → **Chụp bằng camera** → cấp quyền camera cho Chrome/Edge → đưa **toàn bộ phiếu với 4 mốc đen** vào khung hình → chụp ảnh.
+- Streamlit sẽ đưa ảnh chụp vào **cùng thuật toán OpenCV** như khi tải tệp JPG/PNG lên: kiểm tra ảnh, căn chỉnh, nhận diện mã đề và 40 câu, đối chiếu đáp án, xuất kết quả.
+- Chọn **Tải ảnh từ máy** nếu không có webcam hoặc muốn sử dụng ảnh chụp sẵn. Không thay đổi bộ đáp án, mẫu phiếu hoặc cách tính điểm.
+- Camera dùng quyền truy cập của **trình duyệt**; trên máy tính địa chỉ `http://localhost:8501` hoặc `http://localhost:8502` thường hoạt động. Truy cập từ điện thoại bằng HTTP qua địa chỉ IP mạng LAN có thể bị trình duyệt từ chối camera vì không phải nguồn an toàn; khi đó tải ảnh chụp sẵn hoặc dùng HTTPS.
+- Chức năng hiện là **chụp một ảnh rồi chấm**, **không** tự quét liên tục từ luồng video.
+- Có test mô phỏng camera (ảnh hợp lệ, chưa chụp, ảnh lỗi, ảnh quá lớn), nhưng vẫn cần thử webcam/trình duyệt thật và phiếu in thật để đánh giá độ chính xác.
