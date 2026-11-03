@@ -8,5 +8,12 @@ if errorlevel 1 (
  pause
  exit /b 1
 )
+echo Checking optional live camera dependencies...
+py -m pip install -r requirements-camera.txt
+if errorlevel 1 (
+ echo WARNING: Auto-scan camera libraries were not installed.
+ echo Normal photo upload and manual camera capture will still work.
+ echo You can try: py -m pip install -r requirements-camera.txt
+)
 py -m streamlit run app.py
 pause
