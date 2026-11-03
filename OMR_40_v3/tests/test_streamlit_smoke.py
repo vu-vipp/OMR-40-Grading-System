@@ -43,12 +43,15 @@ class _ImageUpload:
 
 
 class _FakeStreamlit(types.ModuleType):
-    def __init__(self, selected):
+    def __init__(self, selected, source='📁 Tải ảnh từ máy', image_data=None):
         super().__init__('streamlit')
         self.session_state = {}
         self.sidebar = _Element(self.session_state)
-        self.upload = _ImageUpload(create_case(selected))
+        self.upload = _ImageUpload(create_case(selected)) if image_data is None else image_data
+        self.source = source
         self.calls = []
+        self.camera_called = False
+        self.uploader_called = False
         self.tab_labels = []
     def tabs(self, names):
         self.tab_labels = list(names)
@@ -70,8 +73,15 @@ class _FakeStreamlit(types.ModuleType):
         return self.session_state.get(key, options[:4])
     def file_uploader(self, *args, key=None, **kwargs):
         if key == 'uploaded_sheet':
-            return self.upload
+            self.uploader_called = True
+            return self.upload if self.source == '📁 Tải ảnh từ máy' else None
         return None
+    def radio(self, label, options, **kwargs):
+        assert self.source in options
+        return self.source
+    def camera_input(self, label, **kwargs):
+        self.camera_called = True
+        return self.upload if self.source == '📷 Chụp bằng camera' else None
     def button(self, *args, **kwargs):
         return False
     def download_button(self, *args, **kwargs):
@@ -91,6 +101,7 @@ class _FakeStreamlit(types.ModuleType):
         return fn
 
 
+@pytest.mark.parametrize('source', ['📁 Tải ảnh từ máy', '📷 Chụp bằng camera'])
 @pytest.mark.parametrize('selected,kind', [
     ('Dung_40_cau', 'success'),
     ('Bo_trong_3_cau', 'success'),
@@ -99,14 +110,16 @@ class _FakeStreamlit(types.ModuleType):
     ('Khong_to_ma_de', 'error'),
     ('Anh_trang', 'error'),
 ])
-def test_upload_grading_without_sample_tab(selected, kind, monkeypatch):
-    mock = _FakeStreamlit(selected)
+def test_grade_with_upload_or_camera(selected, kind, source, monkeypatch):
+    mock = _FakeStreamlit(selected, source=source)
     monkeypatch.setitem(sys.modules, 'streamlit', mock)
     path = Path(__file__).parents[1] / 'app.py'
     spec = importlib.util.spec_from_file_location('_omr_mock_app', path)
     mod = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(mod)
     assert kind in mock.calls
+    assert mock.camera_called == (source == '📷 Chụp bằng camera')
+    assert mock.uploader_called == (source == '📁 Tải ảnh từ máy')
     if kind in ('warning', 'success'):
         assert 'dataframe' in mock.calls
     assert mock.tab_labels == [
@@ -114,3 +127,50 @@ def test_upload_grading_without_sample_tab(selected, kind, monkeypatch):
     ]
     assert '🧪 Kiểm thử mẫu' not in mock.tab_labels
     assert len([k for k in mock.session_state if k.startswith('answer_key_')]) == 4
+
+
+@pytest.mark.parametrize('source', ['📁 Tải ảnh từ máy', '📷 Chụp bằng camera'])
+def test_invalid_photo_is_rejected(source, monkeypatch):
+    class _UnreadablePhoto:
+        name = 'broken.jpg'
+        def getvalue(self):
+            return b'not a valid image'
+
+    mock = _FakeStreamlit('Dung_40_cau', source=source, image_data=_UnreadablePhoto())
+    monkeypatch.setitem(sys.modules, 'streamlit', mock)
+    path = Path(__file__).parents[1] / 'app.py'
+    spec = importlib.util.spec_from_file_location('_omr_bad_photo_app', path)
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    assert 'error' in mock.calls
+    assert 'dataframe' not in mock.calls
+
+
+@pytest.mark.parametrize('source', ['📁 Tải ảnh từ máy', '📷 Chụp bằng camera'])
+def test_oversize_photo_is_rejected(source, monkeypatch):
+    class _LargePhoto:
+        name = 'huge.jpg'
+        def getvalue(self):
+            return b'x' * (15 * 1024 * 1024 + 1)
+
+    mock = _FakeStreamlit('Dung_40_cau', source=source, image_data=_LargePhoto())
+    monkeypatch.setitem(sys.modules, 'streamlit', mock)
+    path = Path(__file__).parents[1] / 'app.py'
+    spec = importlib.util.spec_from_file_location('_omr_large_photo_app', path)
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    assert 'error' in mock.calls
+    assert 'dataframe' not in mock.calls
+
+
+def test_camera_waits_for_snapshot(monkeypatch):
+    mock = _FakeStreamlit('Dung_40_cau', source='📷 Chụp bằng camera')
+    mock.upload = None
+    monkeypatch.setitem(sys.modules, 'streamlit', mock)
+    path = Path(__file__).parents[1] / 'app.py'
+    spec = importlib.util.spec_from_file_location('_omr_no_snapshot_app', path)
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    assert mock.camera_called
+    assert 'dataframe' not in mock.calls
+    assert 'error' not in mock.calls
