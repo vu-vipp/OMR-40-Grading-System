@@ -1,0 +1,3 @@
+# Install separately if automatic live camera scanning is needed.
+-r requirements.txt
+streamlit-webrtc>=0.47.9,<1

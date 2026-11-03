@@ -204,50 +204,57 @@ def render_sheet(image: np.ndarray, source_label: str, student_id: str, save_key
 
 
 with page_grade:
-    st.subheader('1. Chụp hoặc tải ảnh bài thi đã tô')
+    st.subheader('1. Nhận diện và chấm điểm phiếu trắc nghiệm')
     student_id = st.text_input(
         'Số báo danh (nhập thủ công, không phải OCR)',
         placeholder='Ví dụ: 012345', key='sbd_upload',
     )
     image_source = st.radio(
         'Chọn cách lấy ảnh',
-        ['📁 Tải ảnh từ máy', '📷 Chụp bằng camera'],
+        ['📁 Tải ảnh từ máy', '📷 Chụp bằng camera', '🎥 Quét tự động bằng camera'],
         horizontal=True, key='image_source_mode',
     )
-    if image_source == '📷 Chụp bằng camera':
-        st.caption(
-            'Cho phép trình duyệt truy cập camera. Đặt toàn bộ phiếu và cả 4 mốc đen '
-            'vào khung hình, giữ máy ổn định rồi nhấn chụp.'
+    if image_source == '🎥 Quét tự động bằng camera':
+        from live_camera_ui import show_live_camera
+        show_live_camera(
+            student_id, tuple(codes_on_sheet),
+            st.session_state['answer_keys'], threshold, margin,
         )
-        picture = st.camera_input('📷 Chụp phiếu để nhận diện', key='camera_sheet')
-        source_label = 'Ảnh chụp trực tiếp từ camera'
-        save_key = 'camera'
     else:
-        picture = st.file_uploader(
-            'Chọn ảnh JPG hoặc PNG có đủ 4 mốc đen',
-            type=['jpg', 'jpeg', 'png'], key='uploaded_sheet',
-        )
-        source_label = picture.name if picture is not None else 'Ảnh tải lên'
-        save_key = 'upload'
-
-    if picture is not None:
-        image_bytes = picture.getvalue()
-        if len(image_bytes) > 15 * 1024 * 1024:
-            st.error('Ảnh quá lớn. Vui lòng dùng ảnh dưới 15 MB.')
-        else:
-            image = cv2.imdecode(
-                np.frombuffer(image_bytes, np.uint8), cv2.IMREAD_COLOR,
+        if image_source == '📷 Chụp bằng camera':
+            st.caption(
+                'Cho phép trình duyệt truy cập camera. Đặt toàn bộ phiếu và cả 4 mốc đen '
+                'vào khung hình, giữ máy ổn định rồi nhấn chụp.'
             )
-            if image is None:
-                st.error('Không đọc được ảnh. Hãy chụp lại hoặc chọn tệp JPG/PNG khác.')
-            elif not codes_on_sheet:
-                st.error('Chưa chọn nhóm mã đề trên phiếu.')
+            picture = st.camera_input('📷 Chụp phiếu để nhận diện', key='camera_sheet')
+            source_label = 'Ảnh chụp trực tiếp từ camera'
+            save_key = 'camera'
+        else:
+            picture = st.file_uploader(
+                'Chọn ảnh JPG hoặc PNG có đủ 4 mốc đen',
+                type=['jpg', 'jpeg', 'png'], key='uploaded_sheet',
+            )
+            source_label = picture.name if picture is not None else 'Ảnh tải lên'
+            save_key = 'upload'
+
+        if picture is not None:
+            image_bytes = picture.getvalue()
+            if len(image_bytes) > 15 * 1024 * 1024:
+                st.error('Ảnh quá lớn. Vui lòng dùng ảnh dưới 15 MB.')
             else:
-                render_sheet(
-                    image, source_label, student_id, save_key, tuple(codes_on_sheet),
+                image = cv2.imdecode(
+                    np.frombuffer(image_bytes, np.uint8), cv2.IMREAD_COLOR,
                 )
-    else:
-        st.info('Hãy chọn ảnh từ máy hoặc chụp bằng camera để bắt đầu chấm bài.')
+                if image is None:
+                    st.error('Không đọc được ảnh. Hãy chụp lại hoặc chọn tệp JPG/PNG khác.')
+                elif not codes_on_sheet:
+                    st.error('Chưa chọn nhóm mã đề trên phiếu.')
+                else:
+                    render_sheet(
+                        image, source_label, student_id, save_key, tuple(codes_on_sheet),
+                    )
+        else:
+            st.info('Hãy tải ảnh hoặc chụp ảnh để bắt đầu chấm bài.')
 
 with page_history:
     st.subheader('2. Lịch sử chấm trong phiên hiện tại')
@@ -271,12 +278,12 @@ with page_help:
 3. Ở **Mẫu phiếu và nhóm mã đề**, chọn từ **1 đến 4 mã đề** muốn in trên cùng phiếu, rồi tải mẫu mới.
 4. In mẫu phiếu đúng tỉ lệ; điền SBD, tô đúng **một ô mã đề** và mỗi câu tối đa một ô.
 5. Khi chấm, chọn **đúng nhóm và đúng thứ tự mã đề đã in** trước khi tải ảnh lên; chương trình sẽ kiểm tra dấu xác minh của phiếu để tránh chấm sai mã.
-6. Ở tab **Chấm bài**, chọn **Tải ảnh từ máy** để chọn JPG/PNG hoặc **Chụp bằng camera** để chụp phiếu ngay trong trình duyệt. Bảo đảm đủ 4 mốc đen, ảnh sáng và nét. Xem kết quả rồi xuất CSV.
+6. Ở tab **Chấm bài**, chọn **Tải ảnh**, **Chụp bằng camera**, hoặc **Quét tự động bằng camera**. Với chế độ quét tự động, bấm START bật webcam một lần rồi giơ phiếu đủ 4 mốc đen trước camera. Giữ yên cho đến khi hệ thống nhận diện ổn định và tự chấm; không cần bấm chụp.
 7. Nếu có câu **chưa rõ**, điểm chỉ tạm tính và phải kiểm tra thủ công trước khi công nhận.
 
 **Lưu ý:** Mỗi tờ phiếu chỉ có tối đa **4 ô mã đề**, nhưng có thể tạo nhiều mẫu phiếu và lưu nhiều mã đề trên chương trình. Không thể tự viết một mã mới trên mẫu 101–104 rồi mong chương trình nhận ra; phải in mẫu mới đã cấu hình.
 
 **Tương thích:** Vẫn chấm được phiếu 101–104 in từ phiên bản V3 cũ khi chọn đúng nhóm 101–104. Bản V4 có thêm dấu xác minh giúp phát hiện nhầm mẫu.
 
-**Camera:** Khi sử dụng trên máy tính, hãy cấp quyền camera cho trình duyệt và chụp từ `localhost`. Khi mở trang từ điện thoại qua địa chỉ mạng nội bộ HTTP, trình duyệt có thể chặn camera; nếu vậy hãy tải ảnh lên hoặc dùng địa chỉ HTTPS. Đây là chế độ chụp từng ảnh, không phải quét video liên tục.\n\n**Giới hạn:** Không đọc số báo danh viết tay; ảnh quá mờ, thiếu góc hoặc bị che dấu xác minh có thể bị từ chối. Cần thử trên phiếu giấy thực tế trước khi chấm điểm chính thức.
+**Quét camera liên tục:** Nếu chưa có thư viện, chạy `python -m pip install -r requirements-camera.txt` trong thư mục dự án. Khi quét xong một bài, bấm **Quét bài tiếp theo** để tránh lưu trùng bài do camera vẫn nhìn thấy phiếu cũ. Không sử dụng chức năng này để chấm chính thức trước khi thử với ảnh phiếu in thật.\n\n**Camera:** Khi sử dụng trên máy tính, hãy cấp quyền camera cho trình duyệt và chụp từ `localhost`. Khi mở trang từ điện thoại qua địa chỉ mạng nội bộ HTTP, trình duyệt có thể chặn camera; nếu vậy hãy tải ảnh lên hoặc dùng địa chỉ HTTPS. Đây là chế độ chụp từng ảnh, không phải quét video liên tục.\n\n**Giới hạn:** Không đọc số báo danh viết tay; ảnh quá mờ, thiếu góc hoặc bị che dấu xác minh có thể bị từ chối. Cần thử trên phiếu giấy thực tế trước khi chấm điểm chính thức.
 ''')

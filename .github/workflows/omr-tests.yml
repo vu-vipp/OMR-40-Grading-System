@@ -1,0 +1,25 @@
+name: OMR Python tests
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Install requirements
+        working-directory: OMR_40_v3
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -r requirements-dev.txt
+      - name: Syntax check live camera UI
+        working-directory: OMR_40_v3
+        run: python -m py_compile app.py live_scan.py live_camera_ui.py
+      - name: Run regression suite
+        working-directory: OMR_40_v3
+        run: python -m pytest -q tests
