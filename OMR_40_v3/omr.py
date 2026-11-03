@@ -213,11 +213,15 @@ def _find_markers(image: np.ndarray) -> np.ndarray:
             continue
         marker_areas = [group[k][2] for k in order]
         ratio = min(marker_areas) / max(marker_areas)
-        if ratio < .23:
+        # Real corner squares have similar size. Filled answer bubbles
+        # are considerably smaller; never use them to stand in for a
+        # missing registration marker.
+        if ratio < .50:
             continue
-        # Printed marker area is ~0.13% of the marker quadrilateral;
-        # this check rejects unrelated giant square objects in view.
-        if any(not .00012 < a / area < .02 for a in marker_areas):
+        # The 38x38 corner squares have area ~0.13% of the 870x1270
+        # marker quadrilateral. Keep perspective tolerance but exclude
+        # stamp bits, answer bubbles and other black squares.
+        if any(not .00065 < a / area < .0045 for a in marker_areas):
             continue
         score = area * ratio**.5
         if score > best_score:
