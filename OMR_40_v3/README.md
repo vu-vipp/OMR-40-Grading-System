@@ -116,3 +116,35 @@ Chạy `TEST_WINDOWS.bat` hoặc `python -m pytest -q tests`. Bộ kiểm thử 
 - Camera dùng quyền truy cập của **trình duyệt**; trên máy tính địa chỉ `http://localhost:8501` hoặc `http://localhost:8502` thường hoạt động. Truy cập từ điện thoại bằng HTTP qua địa chỉ IP mạng LAN có thể bị trình duyệt từ chối camera vì không phải nguồn an toàn; khi đó tải ảnh chụp sẵn hoặc dùng HTTPS.
 - Chức năng hiện là **chụp một ảnh rồi chấm**, **không** tự quét liên tục từ luồng video.
 - Có test mô phỏng camera (ảnh hợp lệ, chưa chụp, ảnh lỗi, ảnh quá lớn), nhưng vẫn cần thử webcam/trình duyệt thật và phiếu in thật để đánh giá độ chính xác.
+
+
+## 10. V5 — Quét và chấm tự động khi giơ phiếu trước camera (không bấm chụp)
+
+V5 thêm lựa chọn **🎥 Quét tự động bằng camera**, bên cạnh **📁 Tải ảnh từ máy** và **📷 Chụp bằng camera** trước đây.
+
+### Cách sử dụng
+
+1. Nhập đáp án chuẩn và chọn đúng nhóm mã đề ở sidebar. In mẫu phiếu của nhóm đã chọn.
+2. Mở tab **Chấm bài** → chọn **🎥 Quét tự động bằng camera**.
+3. Nhấn **START** trong khung video (bắt buộc một lần để cấp quyền webcam từ trình duyệt).
+4. Đưa tờ phiếu đã tô vào khung hình, giữ cho **đủ 4 mốc đen** nằm trong ảnh. Không cần nhấn nút chụp.
+5. Chương trình chạy OpenCV khoảng mỗi 0,6 giây, chỉ chấp nhận kết quả khi nhận được **3 lần đọc liên tiếp giống nhau**, không có câu **chưa rõ**.
+6. Khi nhận diện ổn định, kết quả mã đề, điểm, ảnh được đánh dấu và bảng đúng/sai tự xuất hiện. Có thể xuất CSV/PNG và lưu vào lịch sử phiên.
+7. Muốn chấm bài khác, bấm **Quét bài tiếp theo**, thay tờ giấy và tiếp tục giữ ổn định trước camera. Nút này không phải nút chụp; nó chỉ mở khóa một lượt quét mới để tránh chấm trùng.
+
+### Cài đặt
+
+Trên Windows, file `CHAY_WINDOWS.bat` sẽ **thử cài** gói WebRTC bổ sung nhưng vẫn chạy ứng dụng nếu cài add-on thất bại. Nếu camera tự động báo thiếu thư viện, mở CMD trong thư mục `OMR_40_v3` rồi chạy:
+
+```cmd
+py -m pip install -r requirements-camera.txt
+```
+
+Sau đó chạy lại `CHAY_WINDOWS.bat`. Thư viện cho chế độ quét liên tục: `streamlit-webrtc`, cùng phụ thuộc `av` và các thư viện video liên quan.
+
+- Chế độ webcam liên tục được xử lý qua WebRTC; **không cần chụp ảnh từng lần**, khác với `st.camera_input()`.
+- Camera trong trình duyệt thường hoạt động tại `http://localhost:8501` hoặc `http://localhost:8502`; với điện thoại truy cập qua IP LAN HTTP, có thể phải dùng HTTPS để được cấp quyền camera.
+- Nếu camera hoặc đường WebRTC không hoạt động, vẫn có thể dùng **Tải ảnh** hoặc **Chụp bằng camera** như trước.
+- Trong chế độ quét tự động, kết quả được giữ lại cho đến khi bấm **Quét bài tiếp theo**; điều này giúp tránh ghi trùng khi giữ nguyên một tờ giấy trước camera.
+- Để tránh chấm nhầm, phiếu có câu **tô chưa rõ** sẽ không được xác nhận tự động. Các câu bỏ trống hoặc tô nhiều vẫn tính 0 điểm theo quy tắc hiện có.
+- **Kiểm thử:** Module xử lý ổn định khung hình có các test cho ảnh demo, ảnh sai, debounce, ảnh mờ/không rõ và quét lại. Tuy nhiên, video WebRTC và phiếu in giấy cần được thử bằng camera thật trước khi dùng chính thức.
