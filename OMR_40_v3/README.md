@@ -148,3 +148,16 @@ Sau đó chạy lại `CHAY_WINDOWS.bat`. Thư viện cho chế độ quét liê
 - Trong chế độ quét tự động, kết quả được giữ lại cho đến khi bấm **Quét bài tiếp theo**; điều này giúp tránh ghi trùng khi giữ nguyên một tờ giấy trước camera.
 - Để tránh chấm nhầm, phiếu có câu **tô chưa rõ** sẽ không được xác nhận tự động. Các câu bỏ trống hoặc tô nhiều vẫn tính 0 điểm theo quy tắc hiện có.
 - **Kiểm thử:** Module xử lý ổn định khung hình có các test cho ảnh demo, ảnh sai, debounce, ảnh mờ/không rõ và quét lại. Tuy nhiên, video WebRTC và phiếu in giấy cần được thử bằng camera thật trước khi dùng chính thức.
+
+
+## 11. Camera lật ngược / bị mờ – điều chỉnh trực tiếp trong chế độ quét tự động
+
+Trong **🎥 Quét tự động bằng camera**:
+- **Ưu tiên camera nào?** Chọn **Camera sau / camera ngoài** (phù hợp điện thoại) hoặc **Camera trước / webcam**. Trên máy chỉ có 1 webcam thì hai lựa chọn có thể cùng dùng một thiết bị. Việc chọn camera là yêu cầu ưu tiên cho trình duyệt, không bảo đảm có đủ phần cứng.
+- **Hướng hình camera:** Chọn **Giữ nguyên**, **Lật ngang (đảo gương)**, **Lật dọc**, hoặc **Xoay 180°**. Hình được chỉnh cả trước khi đưa vào OpenCV, không chỉ lật phần xem trước; vì vậy mốc phiếu và chữ sẽ được đọc theo hướng đã chọn.
+- **Độ phân giải yêu cầu:** Mặc định **Full HD 1920×1080** (nếu webcam/browser hỗ trợ); tùy chọn **HD 1280×720** khi máy yếu hoặc video chậm. Trong khung video hiển thị **VIDEO: W×H** để biết độ phân giải thực tế.
+- **Làm nét hình xem trước:** Tăng sắc cạnh hình người dùng nhìn thấy, **không ảnh hưởng ảnh dùng để chấm**, **không khôi phục chi tiết** khi webcam không lấy nét được. Nếu vẫn mờ: lau ống kính, bổ sung ánh sáng, thay khoảng cách cầm phiếu, giữ camera/giấy ổn định hoặc dùng camera sau điện thoại có lấy nét tốt.
+- Sau khi đổi nguồn camera, hướng hình hoặc độ phân giải, trình duyệt có thể yêu cầu nhấn START lại để khởi động luồng video mới. Không cần bấm chụp mỗi bài.
+- Camera mặc định của laptop thường không có khả năng tự động lấy nét ở khoảng cách gần. Đừng dí phiếu quá sát ống kính; hãy đưa tờ giấy vào vùng nét, đủ 4 mốc đen rồi giữ yên cho đến khi nhận diện.
+
+**An toàn chấm điểm:** Chỉ lật/xoay dữ liệu video thật khi người dùng chọn tương ứng. Chức năng tô rõ/tô mờ, phát hiện mã đề, chấm điểm và xuất kết quả vẫn do thuật toán OMR cũ xử lý.
