@@ -136,41 +136,100 @@ def image_quality(image: np.ndarray) -> dict:
 
 
 def _find_markers(image: np.ndarray) -> np.ndarray:
+    """Locate the four corner squares even when a portrait sheet is centred
+    inside a landscape webcam frame.
+
+    We score groups of dark, approximately square contours rather than
+    assuming the printed sheet reaches all four corners of the *photo*.
+    """
+    from itertools import combinations
+
     gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
     hh, ww = gray.shape
-    _, binary = cv2.threshold(gray, 0, 255, cv2.THRESH_BINARY_INV + cv2.THRESH_OTSU)
-    contours, _ = cv2.findContours(binary, cv2.RETR_LIST, cv2.CHAIN_APPROX_SIMPLE)
-    zones: list[list[tuple[float, float, float]]] = [[], [], [], []]
+    _, binary = cv2.threshold(
+        gray, 0, 255, cv2.THRESH_BINARY_INV + cv2.THRESH_OTSU
+    )
+    contours, _ = cv2.findContours(
+        binary, cv2.RETR_LIST, cv2.CHAIN_APPROX_SIMPLE
+    )
+    candidates = []
+    min_area = max(50., hh * ww * .00004)
     for contour in contours:
         area = float(cv2.contourArea(contour))
-        if not (max(80., hh * ww * .00015) < area < hh * ww * .02):
+        if not (min_area < area < hh * ww * .02):
             continue
         x, y, w, h = cv2.boundingRect(contour)
         if not (.70 < w / max(h, 1) < 1.32 and area / max(w * h, 1) > .74):
             continue
-        mask = np.zeros_like(gray)
-        cv2.drawContours(mask, [contour], -1, 255, -1)
-        if cv2.mean(gray, mask=mask)[0] > 110:
+        # Mask just this contour's ROI (not one whole camera-sized mask per
+        # possible square). This matters for HD/Full HD live webcam frames.
+        mask = np.zeros((h, w), np.uint8)
+        cv2.drawContours(mask, [contour], -1, 255, -1, offset=(-x, -y))
+        if cv2.mean(gray[y:y+h, x:x+w], mask=mask)[0] > 110:
             continue
-        center_x, center_y = x + w / 2, y + h / 2
-        # Four corner markers are expected to remain near the sheet's four corners.
-        if center_x < ww * .28 and center_y < hh * .28:
-            zones[0].append((center_x, center_y, area))
-        elif center_x > ww * .72 and center_y < hh * .28:
-            zones[1].append((center_x, center_y, area))
-        elif center_x > ww * .72 and center_y > hh * .72:
-            zones[2].append((center_x, center_y, area))
-        elif center_x < ww * .28 and center_y > hh * .72:
-            zones[3].append((center_x, center_y, area))
-    if any(not zone for zone in zones):
-        raise SheetError('Không tìm thấy đủ 4 mốc đen tại góc phiếu. Hãy chụp đầy đủ tờ giấy và thử lại.')
-    points = np.float32([max(zone, key=lambda v: v[2])[:2] for zone in zones])
-    # Reject implausible / collapsed quadrilaterals.
-    quad_area = abs(float(cv2.contourArea(points)))
-    if quad_area < hh * ww * .35:
-        raise SheetError('Các mốc định vị quá gần nhau hoặc phiếu bị cắt. Hãy chụp lại.')
-    return points
+        candidates.append((x + w / 2, y + h / 2, area))
 
+    if len(candidates) < 4:
+        raise SheetError('Không tìm thấy đủ 4 mốc đen. Hãy chụp trọn tờ phiếu mẫu 40 câu, đủ sáng và rõ nét.')
+
+    # The registration squares are larger than filled answer bubbles and
+    # the 24-bit stamp, so first consider the strongest plausible contours.
+    candidates.sort(key=lambda c: c[2], reverse=True)
+    unique = []
+    for cand in candidates:
+        if all((cand[0]-other[0])**2 + (cand[1]-other[1])**2 >
+               max(6., min(cand[2], other[2])**.5 / 2)**2 for other in unique):
+            unique.append(cand)
+        if len(unique) >= 18:
+            break
+
+    best_points = None
+    best_score = -1.
+    for group in combinations(unique, 4):
+        points = np.float32([(x, y) for x, y, _ in group])
+        sums = points[:, 0] + points[:, 1]
+        diffs = points[:, 0] - points[:, 1]
+        # Order: top-left, top-right, bottom-right, bottom-left.
+        order = [int(np.argmin(sums)), int(np.argmax(diffs)),
+                 int(np.argmax(sums)), int(np.argmin(diffs))]
+        if len(set(order)) != 4:
+            continue
+        quad = points[order]
+        if not cv2.isContourConvex(quad.astype(np.int32)):
+            continue
+        area = abs(float(cv2.contourArea(quad)))
+        # A portrait page inside a 16:9 camera often occupies <35% of
+        # the image; insisting on >=35% made live recognition impossible.
+        if area < hh * ww * .06:
+            continue
+        top = float(np.linalg.norm(quad[1] - quad[0]))
+        bottom = float(np.linalg.norm(quad[2] - quad[3]))
+        left = float(np.linalg.norm(quad[3] - quad[0]))
+        right = float(np.linalg.norm(quad[2] - quad[1]))
+        if min(top, bottom) < ww * .14 or min(left, right) < hh * .22:
+            continue
+        aspect = (top + bottom) / (left + right)
+        if not .28 < aspect < 1.55:
+            continue
+        marker_areas = [group[k][2] for k in order]
+        ratio = min(marker_areas) / max(marker_areas)
+        if ratio < .23:
+            continue
+        # Printed marker area is ~0.13% of the marker quadrilateral;
+        # this check rejects unrelated giant square objects in view.
+        if any(not .00012 < a / area < .02 for a in marker_areas):
+            continue
+        score = area * ratio**.5
+        if score > best_score:
+            best_score = score
+            best_points = quad
+
+    if best_points is None:
+        raise SheetError(
+            'Có vùng đen nhưng chưa xác định được 4 mốc của phiếu. '
+            'Hãy để phiếu thẳng, đủ 4 góc trong khung, không che mốc và chụp gần hơn.'
+        )
+    return best_points
 
 def align_sheet(image: np.ndarray) -> np.ndarray:
     image_quality(image)
