@@ -264,6 +264,52 @@ def classify(ratios, threshold: float = .24, margin: float = .055):
     return hits[0]
 
 
+def _calibrate_bubble_centers(aligned: np.ndarray) -> dict[tuple[int, int], tuple[int, int]] | None:
+    """Find actual printed circle centres after perspective alignment.
+
+    A photographed sheet may still curve, bend, or stretch. Even a 10-25 px
+    shift can put the old fixed sampling circle over the outline of a blank
+    answer. Use the detected ring centres only if almost the entire 40-question
+    template is present; otherwise fall back to original fixed positions.
+    """
+    gray = cv2.cvtColor(aligned, cv2.COLOR_BGR2GRAY)
+    smooth = cv2.GaussianBlur(gray, (5, 5), 1)
+    circles = cv2.HoughCircles(
+        smooth, cv2.HOUGH_GRADIENT, dp=1.2, minDist=25,
+        param1=105, param2=27, minRadius=12, maxRadius=26,
+    )
+    if circles is None:
+        return None
+
+    # q=0 is reserved for the four exam-code bubbles.
+    expected = [(0, k, code_xy(k)) for k in range(4)]
+    expected.extend((q, k, bubble_xy(q, k))
+                    for q in range(1, NUM_QUESTIONS + 1)
+                    for k in range(4))
+    centers = np.float32([point for _, _, point in expected])
+    detected = circles[0, :, :2]
+    distances = np.linalg.norm(centers[:, None, :] - detected[None, :, :], axis=2)
+    nearest = np.argmin(distances, axis=1)
+    offsets = distances[np.arange(len(expected)), nearest]
+    matching = offsets < 36
+
+    # Refuse a partial or unreliable circular-grid fit; Hough may also
+    # detect random circular objects, text or pencil marks.
+    if (not np.all(matching[:4]) or
+            np.count_nonzero(matching) < 148 or
+            len(set(nearest[matching].tolist())) != np.count_nonzero(matching)):
+        return None
+
+    actual = {}
+    for index, (q, k, point) in enumerate(expected):
+        if matching[index]:
+            x, y = np.rint(detected[nearest[index]]).astype(int)
+            actual[(q, k)] = (int(x), int(y))
+        else:
+            actual[(q, k)] = point
+    return actual
+
+
 def recognize(image: np.ndarray, threshold: float = .24, margin: float = .055, codes=CODES):
     codes = validate_sheet_codes(codes)
     aligned = align_sheet(image)
@@ -275,7 +321,11 @@ def recognize(image: np.ndarray, threshold: float = .24, margin: float = .055, c
         raise SheetError('Đây là mẫu phiếu cũ 101–104 hoặc thiếu dấu xác minh. Hãy in mẫu mới cho nhóm mã đề đã chọn.')
     if stamp is not None and stamp != template_checksum(codes):
         raise SheetError('Sai nhóm mã đề: mẫu phiếu không khớp với nhóm mã đề đã chọn trên giao diện.')
-    code_ratios = [fill_ratio(binary, *code_xy(k)) for k in range(4)]
+    calibrated = _calibrate_bubble_centers(aligned)
+    code_ratios = [
+        fill_ratio(binary, *(calibrated[(0, k)] if calibrated else code_xy(k)))
+        for k in range(4)
+    ]
     code_choice = classify(code_ratios, threshold, margin)
     if not isinstance(code_choice, int):
         raise SheetError('Không đọc được duy nhất mã đề: chưa tô, tô nhiều hoặc tô quá mờ. Không chấm phiếu này.')
@@ -284,17 +334,21 @@ def recognize(image: np.ndarray, threshold: float = .24, margin: float = .055, c
     code = codes[code_choice]
     answers, ratios_by_question = {}, {}
     for question in range(1, NUM_QUESTIONS + 1):
-        ratios = [fill_ratio(binary, *bubble_xy(question, k)) for k in range(4)]
+        ratios = [
+            fill_ratio(binary, *(calibrated[(question, k)] if calibrated
+                                 else bubble_xy(question, k)))
+            for k in range(4)
+        ]
         choice = classify(ratios, threshold, margin)
         answer = LETTERS[choice] if isinstance(choice, int) else choice
         answers[question] = answer
         ratios_by_question[question] = [round(r, 3) for r in ratios]
         for option in range(4):
-            x, y = bubble_xy(question, option)
+            x, y = calibrated[(question, option)] if calibrated else bubble_xy(question, option)
             color = (0, 160, 0) if answer == LETTERS[option] else (0, 165, 255) if answer == 'KHONG_RO' else (175, 175, 175)
             cv2.circle(annotated, (x, y), 22, color, 2)
         if answer in ('TRONG', 'NHIEU', 'KHONG_RO'):
-            x, y = bubble_xy(question, 0)
+            x, y = calibrated[(question, 0)] if calibrated else bubble_xy(question, 0)
             cv2.putText(annotated, '!', (x-55, y+7), cv2.FONT_HERSHEY_SIMPLEX, .8, (0, 0, 255), 2)
     cv2.putText(annotated, f'CODE: {code}', (130, 120), cv2.FONT_HERSHEY_SIMPLEX, .8, (5, 100, 240), 2)
     return code, answers, ratios_by_question, annotated, aligned
@@ -337,6 +391,7 @@ def summary(rows: list[dict]) -> dict[str, int]:
 def annotate_grading(aligned: np.ndarray, rows: list[dict], code: str) -> np.ndarray:
     """Mark selected answers: green=correct, red=wrong, orange=unresolved, gray=blank/multi."""
     result = aligned.copy()
+    calibrated = _calibrate_bubble_centers(aligned)
     colors = {
         'Đúng': (40, 155, 40), 'Sai': (30, 35, 235), 'Bỏ trống': (160, 160, 160),
         'Tô nhiều': (0, 125, 255), 'Chưa rõ': (0, 165, 255),
@@ -345,9 +400,10 @@ def annotate_grading(aligned: np.ndarray, rows: list[dict], code: str) -> np.nda
         q, got, status = row['Câu'], row['Đáp án tô'], row['Kết quả']
         targets = ([LETTERS.index(got)] if got in LETTERS else list(range(4)))
         for idx in targets:
-            cv2.circle(result, bubble_xy(q, idx), 22, colors[status], 3)
+            center = calibrated[(q, idx)] if calibrated else bubble_xy(q, idx)
+            cv2.circle(result, center, 22, colors[status], 3)
         if status != 'Đúng':
-            x, y = bubble_xy(q, 0)
+            x, y = calibrated[(q, 0)] if calibrated else bubble_xy(q, 0)
             cv2.putText(result, '!', (x-54, y+7), cv2.FONT_HERSHEY_SIMPLEX, .7, colors[status], 2)
     cv2.putText(result, f'EXAM CODE: {code}', (118, 120), cv2.FONT_HERSHEY_SIMPLEX, .8, (240, 85, 0), 2)
     return result

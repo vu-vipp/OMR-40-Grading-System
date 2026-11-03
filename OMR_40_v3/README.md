@@ -161,3 +161,16 @@ Trong **🎥 Quét tự động bằng camera**:
 - Camera mặc định của laptop thường không có khả năng tự động lấy nét ở khoảng cách gần. Đừng dí phiếu quá sát ống kính; hãy đưa tờ giấy vào vùng nét, đủ 4 mốc đen rồi giữ yên cho đến khi nhận diện.
 
 **An toàn chấm điểm:** Chỉ lật/xoay dữ liệu video thật khi người dùng chọn tương ứng. Chức năng tô rõ/tô mờ, phát hiện mã đề, chấm điểm và xuất kết quả vẫn do thuật toán OMR cũ xử lý.
+
+
+## 12. Sửa lỗi “Không đọc được duy nhất mã đề” khi ảnh camera có giấy bị cong/lệch nhẹ
+
+Nếu ảnh đã tìm được đủ bốn mốc nhưng báo **không đọc được duy nhất mã đề** dù chỉ tô một ô, lỗi có thể do tờ giấy bị cong khiến tâm vòng tròn thực tế không nằm đúng tọa độ tính từ bốn mốc góc. Khi đó vùng lấy mẫu cũ bị lệch sang **đường viền vòng tròn chưa tô**, tạo ra tỷ lệ điểm ảnh giả gần ngưỡng.
+
+- `omr.py::_calibrate_bubble_centers()` dùng OpenCV Hough Circle Transform tìm tâm 4 ô mã đề và 160 ô trả lời trên ảnh đã căn chỉnh.
+- Chỉ dùng tâm đo từ ảnh nếu tìm thấy ít nhất 148/164 ô với hình học hợp lệ, cả bốn ô mã đề; nếu không đạt điều kiện, giữ cách lấy mẫu tọa độ chuẩn để tương thích ảnh cũ.
+- Cả nhận diện mã đề, tính tỷ lệ tô của 40 câu và vòng đánh dấu kết quả đều theo tâm được hiệu chỉnh.
+- **Không** bỏ kiểm tra tô nhiều, tô quá mờ, thiếu mã đề hay dấu xác minh mẫu phiếu.
+- Có test ảnh tổng hợp bị uốn cong nhẹ, in thẳng bình thường và trường hợp tô hai mã đề / không tô mã đề.
+
+Khi chưa chấm được ảnh thật, hãy giữ nguyên ảnh JPG/PNG gốc (không chỉ ảnh màn hình) và chụp thông báo lỗi đầy đủ để kiểm tra. Nên thử cả **Tải ảnh từ máy** và **Quét camera tự động**, dùng mẫu phiếu do ứng dụng phát hành.
